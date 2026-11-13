@@ -34,7 +34,7 @@ Add-Type -AssemblyName System.Drawing
 
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot     = Split-Path -Parent $scriptDirectory
-if (-not $OutputPath) { $OutputPath = Join-Path $projectRoot 'app.ico' }
+if (-not $OutputPath) { $OutputPath = Join-Path $projectRoot 'src\app.ico' }
 
 $sizes = @(16, 24, 32, 48, 64, 128, 256)
 

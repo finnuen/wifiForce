@@ -96,13 +96,13 @@ rem  Compile
 rem ---------------------------------------------------------------------------
 echo.
 echo Building...
-"%WIND%" "%ROOT%\res.rc" -I "%BUILD_DIR%" -I "%ROOT%" -O coff -o "%BUILD_DIR%\res.o"
+"%WIND%" "%ROOT%\src\res.rc" -I "%BUILD_DIR%" -I "%ROOT%\src" -O coff -o "%BUILD_DIR%\res.o"
 if errorlevel 1 goto failed
 
 set "SPECS="
 if exist "%BUILD_DIR%\no-default-manifest.specs" set "SPECS=-specs=%BUILD_DIR%\no-default-manifest.specs"
 
-"%GXX%" -O2 -std=c++17 -municode -mwindows -static -s -I "%BUILD_DIR%" %SPECS% "%ROOT%\main.cpp" "%BUILD_DIR%\res.o" -o "%BUILD_DIR%\%EXE_NAME%" -lwlanapi -lole32
+"%GXX%" -O2 -std=c++17 -municode -mwindows -static -s -I "%BUILD_DIR%" %SPECS% "%ROOT%\src\main.cpp" "%BUILD_DIR%\res.o" -o "%BUILD_DIR%\%EXE_NAME%" -lwlanapi -lole32
 if errorlevel 1 goto failed
 
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
