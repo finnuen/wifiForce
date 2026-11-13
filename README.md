@@ -2,6 +2,9 @@
 
 A tiny Windows app that keeps **Wi-Fi connected while a LAN cable is plugged in** (and has internet). Two buttons: **Activate** and **Restore to default**.
 
+<img width="412" height="190" alt="PepperSnap_221" src="https://github.com/user-attachments/assets/ce6e7053-680f-4b14-a3f7-de90dcf5c911" />
+
+
 ## Why
 
 Windows (and many laptop drivers) disconnect or idle Wi-Fi as soon as Ethernet is connected. wifiForce stops all the known causes and adds a watchdog that reconnects Wi-Fi if anything still drops it.
