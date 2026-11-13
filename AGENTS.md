@@ -35,10 +35,10 @@ build.bat --clean         rem remove build\ first
 The equivalent by hand, which needs the generated files from the first step:
 
 ```bash
-powershell -File tools\build-files.ps1 -Version 1.0 -BuildDir build
+powershell -File tools\build-files.ps1 -Version 1.1 -BuildDir build
 windres src\res.rc -I build -I src -O coff -o build\res.o
 g++ -O2 -std=c++17 -municode -mwindows -static -s -I build -specs=build/no-default-manifest.specs \
-    src\main.cpp build\res.o -o build\wifiForce_v1.0.exe -lwlanapi -lole32
+    src\main.cpp build\res.o -o build\wifiForce_v1.1.exe -lwlanapi -lole32
 ```
 
 Requires MinGW-w64 (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). A
@@ -46,7 +46,7 @@ Requires MinGW-w64 (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). A
 
 ## Versioning
 
-`version.txt` holds two numbers (`1.0`); a build that carries a change bumps the
+`version.txt` holds two numbers (`1.1`); a build that carries a change bumps the
 last one. The major number moves only when the user asks for it by name. The
 build writes that one number into the file properties, the window title and the
 executable's name, so no copy can disagree. Never hard-code the version in

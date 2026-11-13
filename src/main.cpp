@@ -429,7 +429,7 @@ static bool Restore() {
 
 // ---------------------------------------------------------------- GUI
 enum { ID_ACT = 101, ID_RST = 102 };
-static HWND g_wnd, g_stat, g_act, g_rst;
+static HWND g_wnd, g_stat, g_note, g_act, g_rst;
 static volatile LONG g_checking = 0;
 static bool g_busy = false;
 
@@ -470,10 +470,25 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_stat = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 44, 380, 20, h, nullptr, nullptr, nullptr);
         g_act = CreateWindowW(L"BUTTON", L"Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 30, 80, 160, 44, h, (HMENU)ID_ACT, nullptr, nullptr);
         g_rst = CreateWindowW(L"BUTTON", L"Restore to default", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 210, 80, 160, 44, h, (HMENU)ID_RST, nullptr, nullptr);
-        for (HWND c : {t, g_stat, g_act, g_rst}) SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE);
+        // Two lines of room: the sentence wraps rather than clipping when the
+        // user's dialog font is wider than the default. It is only a warning, so
+        // it never changes - which also means the red draw is safe.
+        g_note = CreateWindowW(L"STATIC", L"Wi-Fi cannot be disconnected while wifiForce is active.",
+                               WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 132, 380, 34, h, nullptr, nullptr, nullptr);
+        for (HWND c : {t, g_stat, g_note, g_act, g_rst}) SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE);
         RefreshAsync();
         return 0;
     }
+    case WM_CTLCOLORSTATIC:
+        // The warning is drawn in red on the dialog's own face colour, so it sits
+        // on the background instead of in a box. The other statics keep the
+        // default look.
+        if ((HWND)l == g_note) {
+            SetTextColor((HDC)w, RGB(0xC0, 0x30, 0x2B));
+            SetBkMode((HDC)w, TRANSPARENT);
+            return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+        }
+        break;
     case WM_COMMAND:
         if (LOWORD(w) == ID_ACT || LOWORD(w) == ID_RST) {
             g_busy = true;
@@ -541,7 +556,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     RegisterClassExW(&wc);
     g_wnd = CreateWindowW(L"wifiForceWnd", L"wifiForce " WIFIFFORCE_VERSION_DOTTED,
                           WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                          CW_USEDEFAULT, CW_USEDEFAULT, 416, 192, nullptr, nullptr, inst, nullptr);
+                          CW_USEDEFAULT, CW_USEDEFAULT, 416, 208, nullptr, nullptr, inst, nullptr);
     ShowWindow(g_wnd, show); UpdateWindow(g_wnd);
     MSG msg; while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     return 0;
