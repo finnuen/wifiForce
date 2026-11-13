@@ -1,0 +1,10 @@
+# Build output: build.bat writes here, and a release carries the executable.
+build/
+dist/
+
+# Local secrets, never committed.
+.env
+
+# Windows and editor noise.
+Thumbs.db
+desktop.ini
