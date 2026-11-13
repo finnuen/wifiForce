@@ -2,8 +2,7 @@
 
 A tiny Windows app that keeps **Wi-Fi connected while a LAN cable is plugged in** (and has internet). Two buttons: **Activate** and **Restore to default**.
 
-<img width="412" height="190" alt="PepperSnap_221" src="https://github.com/user-attachments/assets/ce6e7053-680f-4b14-a3f7-de90dcf5c911" />
-
+![The wifiForce window while active](docs/wifiForce-window.png)
 
 ## Why
 
@@ -77,8 +76,9 @@ the file attached to a release is renamed to `wifiForce.exe`.
 
 Files: `src\` - `main.cpp` (all the code), `res.rc` (icon, manifest, version
 block), `app.manifest` (admin elevation + visual styles) and `app.ico` (generated
-by `tools\make-icon.ps1`) - plus `version.txt` and `tools\` (version and build
-files). `build\` and `dist\` are output and are not committed.
+by `tools\make-icon.ps1`) - plus `version.txt`, `docs\` (the README screenshot)
+and `tools\` (version and build files). `build\` and `dist\` are output and are
+not committed.
 
 ## License
 

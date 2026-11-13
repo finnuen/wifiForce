@@ -21,6 +21,7 @@ the task names, the data folder and the documentation.
 - `tools\version.ps1`: bump / keep / set the version (`-KeepVersion`, `-Version 2.0`)
 - `tools\build-files.ps1`: writes `build\version_generated.h` and the manifest fix
 - `tools\make-icon.ps1`: draws `src\app.ico` from geometry (Wi-Fi in a shield, JustViewMD's blue tile)
+- `docs\wifiForce-window.png`: the README screenshot, committed and referenced by relative path
 - `LICENSE`: Apache-2.0
 
 ## Build
