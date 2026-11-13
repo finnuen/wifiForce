@@ -43,6 +43,7 @@ If a value cannot be put back, the backup is kept and the app reports an error i
 - Needs Windows 10/11, PowerShell 5+ and Task Scheduler.
 - Click **Restore to default** before deleting the app. Deleting only `wifiForce.exe` leaves the background tasks running.
 - Only one window can be open at a time; starting the exe again brings the existing one forward.
+- On launch the window asks GitHub whether a newer release exists. If there is one, **Download latest** opens the release page in your browser; **Close** dismisses the notice. Nothing is sent, nothing is downloaded or installed on its own, and the check is silent when offline. The background tasks never call out.
 - `fDisablePowerManagement` under the `WcmSvc\GroupPolicy` key is not a documented policy value (the other two are). It is harmless - it is written on Activate and removed or reverted on Restore like everything else - but it may have no effect on some builds.
 
 ## Manual removal

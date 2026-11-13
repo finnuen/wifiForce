@@ -8,6 +8,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wlanapi.h>
+#include <winhttp.h>
+#include <shellapi.h>
 #include <string>
 
 // Written by tools\build-files.ps1 from version.txt: the window title carries
@@ -433,6 +435,156 @@ static HWND g_wnd, g_stat, g_note, g_act, g_rst;
 static volatile LONG g_checking = 0;
 static bool g_busy = false;
 
+// ---------------------------------------------------------------- update check
+// The only network call the program makes, and only in GUI mode: ask GitHub for
+// the newest release tag. Every failure - offline, blocked, rate limited,
+// unparsable - is silent, so a machine without internet behaves exactly as it
+// did before. The watchdog never calls out.
+static const wchar_t* kReleasePage = L"https://github.com/finnuen/wifiForce/releases/latest";
+static std::wstring g_latest;
+
+static bool IsNewer(const std::wstring& candidate, const std::wstring& current) {
+    int a[4] = {0, 0, 0, 0}, b[4] = {0, 0, 0, 0};
+    auto fill = [](const std::wstring& s, int (&out)[4]) {
+        int i = 0;
+        for (wchar_t c : s) {
+            if (c == L'.') { if (++i > 3) return; continue; }
+            if (c < L'0' || c > L'9' || out[i] > 9999) { out[0] = -1; return; }
+            out[i] = out[i] * 10 + (c - L'0');
+        }
+    };
+    fill(candidate, a); fill(current, b);
+    if (a[0] < 0 || b[0] < 0) return false;      // unparsable: say nothing
+    for (int i = 0; i < 4; ++i) if (a[i] != b[i]) return a[i] > b[i];
+    return false;
+}
+
+static std::wstring LatestVersion() {
+    std::wstring tag;
+    HINTERNET session = WinHttpOpen(L"wifiForce/" WIFIFFORCE_VERSION_DOTTED,
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!session) return tag;
+    // Never let a check hold the program up: the timeouts are short and this
+    // runs on its own thread.
+    WinHttpSetTimeouts(session, 3000, 3000, 3000, 5000);
+    HINTERNET conn = WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
+    HINTERNET req = conn ? WinHttpOpenRequest(conn, L"GET", L"/repos/finnuen/wifiForce/releases/latest",
+                                              nullptr, WINHTTP_NO_REFERER,
+                                              WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE) : nullptr;
+    std::string body;
+    if (req && WinHttpSendRequest(req, L"Accept: application/vnd.github+json\r\n", (DWORD)-1L,
+                                  WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+        WinHttpReceiveResponse(req, nullptr)) {
+        DWORD status = 0, size = sizeof status;
+        if (WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX) &&
+            status == 200) {
+            for (;;) {
+                DWORD avail = 0;
+                if (!WinHttpQueryDataAvailable(req, &avail) || avail == 0) break;
+                std::string chunk(avail, '\0');
+                DWORD read = 0;
+                if (!WinHttpReadData(req, &chunk[0], avail, &read) || read == 0) break;
+                body.append(chunk.data(), read);
+                if (body.size() > 262144) break;   // a release body is a few hundred bytes
+            }
+        }
+    }
+    if (req) WinHttpCloseHandle(req);
+    if (conn) WinHttpCloseHandle(conn);
+    WinHttpCloseHandle(session);
+
+    // "tag_name": "1.2"
+    size_t key = body.find("\"tag_name\"");
+    if (key == std::string::npos) return tag;
+    size_t open = body.find('"', body.find(':', key));
+    if (open == std::string::npos) return tag;
+    size_t shut = body.find('"', open + 1);
+    if (shut == std::string::npos) return tag;
+    std::string raw = body.substr(open + 1, shut - open - 1);
+    if (!raw.empty() && (raw[0] == 'v' || raw[0] == 'V')) raw.erase(0, 1);
+    return std::wstring(raw.begin(), raw.end());
+}
+
+static void OpenReleasePage() {
+    // explorer.exe starts at the user's own integrity level, so the browser does
+    // not inherit this program's administrator rights.
+    if ((INT_PTR)ShellExecuteW(nullptr, L"open", L"explorer.exe", kReleasePage, nullptr, SW_SHOWNORMAL) <= 32)
+        ShellExecuteW(nullptr, L"open", kReleasePage, nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+enum { ID_DL = 201, ID_LATER = 202 };
+
+static LRESULT CALLBACK UpdateProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+    case WM_CREATE: {
+        HFONT f = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+        HWND a = CreateWindowW(L"STATIC", L"A newer version of wifiForce is available.",
+            WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 16, 380, 20, h, nullptr, nullptr, nullptr);
+        std::wstring line = L"Installed " WIFIFFORCE_VERSION_DOTTED L"    -    newest " + g_latest;
+        HWND b = CreateWindowW(L"STATIC", line.c_str(),
+            WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 40, 380, 20, h, nullptr, nullptr, nullptr);
+        HWND c = CreateWindowW(L"STATIC", L"Download opens the release page in your browser.",
+            WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 62, 380, 20, h, nullptr, nullptr, nullptr);
+        HWND d = CreateWindowW(L"BUTTON", L"Download latest",
+            WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 36, 94, 168, 32, h, (HMENU)ID_DL, nullptr, nullptr);
+        HWND e = CreateWindowW(L"BUTTON", L"Close",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 216, 94, 128, 32, h, (HMENU)ID_LATER, nullptr, nullptr);
+        for (HWND x : {a, b, c, d, e}) SendMessageW(x, WM_SETFONT, (WPARAM)f, TRUE);
+        return 0;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w) == ID_DL) { OpenReleasePage(); DestroyWindow(h); }
+        else if (LOWORD(w) == ID_LATER) DestroyWindow(h);
+        return 0;
+    case WM_CLOSE: DestroyWindow(h); return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+// Modal, so the notice cannot be clicked away by accident: the main window is
+// disabled until it is dismissed.
+static void ShowUpdateNotice() {
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof wc; wc.lpfnWndProc = UpdateProc; wc.hInstance = inst;
+    wc.lpszClassName = L"wifiForceUpdateWnd";
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.hIcon = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+    wc.hIconSm = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED);
+    RegisterClassExW(&wc);
+
+    RECT o{};
+    GetWindowRect(g_wnd, &o);
+    const int w = 420, hgt = 172;
+    HWND dlg = CreateWindowExW(WS_EX_DLGMODALFRAME, L"wifiForceUpdateWnd", L"wifiForce update",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        o.left + ((o.right - o.left) - w) / 2, o.top + ((o.bottom - o.top) - hgt) / 2,
+        w, hgt, g_wnd, nullptr, inst, nullptr);
+    if (!dlg) return;
+
+    EnableWindow(g_wnd, FALSE);
+    bool quit = false;
+    MSG m;
+    while (IsWindow(dlg) && IsWindow(g_wnd)) {
+        if (!GetMessageW(&m, nullptr, 0, 0)) { quit = true; break; }
+        if (!IsDialogMessageW(dlg, &m)) { TranslateMessage(&m); DispatchMessageW(&m); }
+    }
+    if (IsWindow(dlg)) DestroyWindow(dlg);
+    if (IsWindow(g_wnd)) { EnableWindow(g_wnd, TRUE); SetActiveWindow(g_wnd); }
+    if (quit) PostQuitMessage(0);   // the main window is gone: let the program end
+}
+
+static DWORD WINAPI UpdateCheck(LPVOID) {
+    const std::wstring current = L"" WIFIFFORCE_VERSION_DOTTED;
+    std::wstring latest = LatestVersion();
+    if (!latest.empty() && IsNewer(latest, current))
+        PostMessageW(g_wnd, WM_APP + 3, 0, (LPARAM)new std::wstring(latest));
+    return 0;
+}
+
 static void ShowStatus(bool on) {
     SetWindowTextW(g_stat, on ? L"Status: ACTIVE  -  Wi-Fi is forced to stay connected"
                               : L"Status: default Windows behavior");
@@ -516,6 +668,15 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         // Restore is still running; that answer is stale.
         if (!g_busy) ShowStatus(w != 0);
         return 0;
+    case WM_APP + 3: {
+        std::wstring* v = (std::wstring*)l;
+        if (v) {
+            g_latest = *v;
+            delete v;
+            ShowUpdateNotice();
+        }
+        return 0;
+    }
     case WM_CLOSE:
         // Closing in the middle of Activate or Restore would kill the worker
         // thread with the process and leave the machine half changed.
@@ -558,6 +719,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                           WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                           CW_USEDEFAULT, CW_USEDEFAULT, 416, 208, nullptr, nullptr, inst, nullptr);
     ShowWindow(g_wnd, show); UpdateWindow(g_wnd);
+    // The window asks once whether something newer exists; the watchdog copy of
+    // the program never does.
+    HANDLE chk = CreateThread(nullptr, 0, UpdateCheck, nullptr, 0, nullptr);
+    if (chk) CloseHandle(chk);
     MSG msg; while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     return 0;
 }
