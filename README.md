@@ -2,7 +2,8 @@
 
 A tiny Windows app that keeps **Wi-Fi connected while a LAN cable is plugged in** (and has internet). Two buttons: **Activate** and **Restore to default**.
 
-![The wifiForce window while active](docs/wifiForce-window.png)
+<img width="412" height="218" alt="image" src="https://github.com/user-attachments/assets/b83796f3-dac3-414f-a177-093606dab828" />
+
 
 ## Why
 
