@@ -1,9 +1,9 @@
-# wifiForce 1.2
+# wifiForce 1.3
 
-The window now checks once, on launch, whether a newer release exists. When there
-is one it says so, with **Download latest** - which opens the release page in your
-browser - and **Close**.
+Turning Wi-Fi off in Windows now turns the forcing off with it. The watchdog
+leaves the radio alone and stops reconnecting, so Wi-Fi can be switched off for
+a while without running **Restore to default** first. Turn it back on and the
+forcing resumes by itself.
 
-If the machine is offline, GitHub cannot be reached, or the answer is "no newer
-version", nothing appears and the program behaves exactly as before. Nothing is
-reported anywhere, and the background watchdog never makes the check.
+The red line under the buttons now says so: "Turn off auto-reconnect by
+restoring to default above or turn off Wi-Fi."

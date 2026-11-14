@@ -36,10 +36,10 @@ build.bat --clean         rem remove build\ first
 The equivalent by hand, which needs the generated files from the first step:
 
 ```bash
-powershell -File tools\build-files.ps1 -Version 1.2 -BuildDir build
+powershell -File tools\build-files.ps1 -Version 1.3 -BuildDir build
 windres src\res.rc -I build -I src -O coff -o build\res.o
 g++ -O2 -std=c++17 -municode -mwindows -static -s -I build -specs=build/no-default-manifest.specs \
-    src\main.cpp build\res.o -o build\wifiForce_v1.2.exe -lwlanapi -lole32 -lwinhttp -lshell32
+    src\main.cpp build\res.o -o build\wifiForce_v1.3.exe -lwlanapi -lole32 -lwinhttp -lshell32
 ```
 
 Requires MinGW-w64 (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). A
@@ -47,7 +47,7 @@ Requires MinGW-w64 (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). A
 
 ## Versioning
 
-`version.txt` holds two numbers (`1.2`); a build that carries a change bumps the
+`version.txt` holds two numbers (`1.3`); a build that carries a change bumps the
 last one. The major number moves only when the user asks for it by name. The
 build writes that one number into the file properties, the window title and the
 executable's name, so no copy can disagree. Never hard-code the version in
@@ -69,7 +69,7 @@ dump: there must be exactly one `24` entry.
 
 - `Activate()`: write scripts to `%ProgramData%\wifiForce`, run `apply.ps1` (backs up, verifies the backup, then applies), check that `backup.json` exists, copy the exe to `wifiForceSvc.exe` (retried for 2 s), create tasks `wifiForceWatchdog` (ONSTART) and `wifiForceGuard` (every minute), run the watchdog.
 - `Restore()`: delete tasks, kill `wifiForceSvc.exe`, run `restore.ps1`, and only when that exits 0 delete the files and the folder (each delete retried, folder removal verified). A failed restore keeps `backup.json` and the whole folder so it can simply be run again.
-- Watchdog (`Watchdog`, `WlanTick`, `EnforceRegistry`): 3 s loop using the WLAN API. Single instance via mutex `Global\wifiForceWatchdogMutex`. Last-used profile is stored in `last.bin`.
+- Watchdog (`Watchdog`, `WlanTick`, `EnforceRegistry`): 3 s loop using the WLAN API. Single instance via mutex `Global\wifiForceWatchdogMutex`. Last-used profile is stored in `last.bin`. A software radio-off (the Settings toggle, airplane mode) pauses it: `WlanTick` returns false and the registry is left alone until Wi-Fi is switched back on.
 - Update check (`UpdateCheck`, `LatestVersion`, `ShowUpdateNotice`): GUI mode only, once per launch. Reads `releases/latest` from `api.github.com`, compares its `tag_name` with the build's own version, and shows a modal notice when it is newer. `Download latest` opens the release page through `explorer.exe`, so the browser does not inherit the app's elevation.
 - Active state = `backup.json` exists AND task `wifiForceWatchdog` exists (`IsActive`).
 
@@ -102,6 +102,7 @@ The scripts report what they did, and the GUI shows the error instead of a statu
 - The watchdog refuses to start when `backup.json` is missing: enforcing the policy without a record to restore from would be a change nobody can undo.
 - One GUI instance at a time, held by `Local\wifiForceGuiMutex`; a second launch brings the existing window forward. Do not release the handle, or the name is free again.
 - Never write to the network-adapter property that reports `Unsupported` for `AllowComputerToTurnOffDevice`; ask first, set only when it is supported.
+- Honor the person's own Wi-Fi switch. When every interface reports its software radio off (the Settings toggle, airplane mode), the watchdog does nothing at all - no radio switch-on, no reconnect, no registry write - and resumes on the next tick once the radio is back on. A *disabled adapter* is still re-enabled after 60 s, because driver power management disables adapters one and the same way and the two cannot be told apart by state.
 - The update check must stay silent and off the UI thread: its own thread, short WinHTTP timeouts, no error box and no delay when it fails. The version comparison ignores a tag it cannot parse rather than guessing.
 - Do not restart `WcmSvc` in code; it briefly drops all networking.
 - The scheduled tasks must allow starting on battery and have no execution time limit (set via `Set-ScheduledTask` after `schtasks /Create`, whose defaults would kill the watchdog on battery and after 72 h).

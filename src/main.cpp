@@ -247,7 +247,24 @@ static std::wstring LoadLast() {
 }
 static void SaveLast(const std::wstring& s) { WriteBytes(DataDir() + L"\\last.bin", s.c_str(), (DWORD)(s.size() * sizeof(wchar_t))); }
 
-static void WlanTick(std::wstring& last, ULONGLONG& lastEnable, ULONGLONG& lastSvcStart) {
+// True when every radio on this adapter reports its *software* state as off.
+// That is what the Settings toggle and airplane mode set, and unlike the driver
+// power-saving path it is a person saying "not now", so it is never undone here.
+static bool RadioOff(HANDLE h, const GUID& guid) {
+    PWLAN_RADIO_STATE rs = nullptr; DWORD sz = 0;
+    if (WlanQueryInterface(h, &guid, wlan_intf_opcode_radio_state, nullptr, &sz, (PVOID*)&rs, nullptr) != ERROR_SUCCESS || !rs)
+        return false;
+    bool off = rs->dwNumberOfPhys > 0;
+    for (DWORD k = 0; k < rs->dwNumberOfPhys; k++)
+        if (rs->PhyRadioState[k].dot11SoftwareRadioState != dot11_radio_state_off) off = false;
+    WlanFreeMemory(rs);
+    return off;
+}
+
+// Returns false when Wi-Fi is switched off at the radio, so the caller stops
+// enforcing the policy too. Nothing is remembered: the next tick sees the radio
+// on again and the forcing resumes on its own.
+static bool WlanTick(std::wstring& last, ULONGLONG& lastEnable, ULONGLONG& lastSvcStart) {
     static ULONGLONG lastConnect = 0;
     HANDLE h = nullptr; DWORD ver = 0;
     if (WlanOpenHandle(2, nullptr, &ver, &h) != ERROR_SUCCESS) {
@@ -255,7 +272,7 @@ static void WlanTick(std::wstring& last, ULONGLONG& lastEnable, ULONGLONG& lastS
         // its own throttle: sharing one timestamp with the adapter enable below
         // would let a service restart postpone that for a minute.
         if (GetTickCount64() - lastSvcStart > 20000) { lastSvcStart = GetTickCount64(); Run(L"sc start WlanSvc", false); }
-        return;
+        return true;
     }
     PWLAN_INTERFACE_INFO_LIST list = nullptr;
     if (WlanEnumInterfaces(h, nullptr, &list) == ERROR_SUCCESS && list) {
@@ -266,6 +283,16 @@ static void WlanTick(std::wstring& last, ULONGLONG& lastEnable, ULONGLONG& lastS
             // stuck PowerShell must not hold the reconnect checks up for
             // minutes.
             RunPS(DataDir() + L"\\enable.ps1", nullptr, 30000);
+        }
+        // Wi-Fi switched off at the radio (Settings toggle, airplane mode): a
+        // person asked for it, so stop - no radio switch-on, no reconnect, and
+        // the caller leaves the policy alone too. Turning it back on resumes on
+        // the next tick.
+        if (list->dwNumberOfItems > 0) {
+            bool allOff = true;
+            for (DWORD i = 0; i < list->dwNumberOfItems; i++)
+                if (!RadioOff(h, list->InterfaceInfo[i].InterfaceGuid)) { allOff = false; break; }
+            if (allOff) { WlanFreeMemory(list); WlanCloseHandle(h, nullptr); return false; }
         }
         for (DWORD i = 0; i < list->dwNumberOfItems; i++) {
             WLAN_INTERFACE_INFO& info = list->InterfaceInfo[i];
@@ -320,6 +347,7 @@ static void WlanTick(std::wstring& last, ULONGLONG& lastEnable, ULONGLONG& lastS
         WlanFreeMemory(list);
     }
     WlanCloseHandle(h, nullptr);
+    return true;
 }
 
 static int Watchdog() {
@@ -332,8 +360,10 @@ static int Watchdog() {
     std::wstring last = LoadLast();
     ULONGLONG lastEnable = 0, lastSvcStart = 0;
     for (;;) {
-        EnforceRegistry();
-        WlanTick(last, lastEnable, lastSvcStart);
+        // WlanTick answers false while the radio is switched off, and then the
+        // policy values are left as they are: the person asked for quiet, and
+        // Restore is still the only thing that puts the registry back.
+        if (WlanTick(last, lastEnable, lastSvcStart)) EnforceRegistry();
         Sleep(3000);
     }
 }
@@ -622,11 +652,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_stat = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 44, 380, 20, h, nullptr, nullptr, nullptr);
         g_act = CreateWindowW(L"BUTTON", L"Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 30, 80, 160, 44, h, (HMENU)ID_ACT, nullptr, nullptr);
         g_rst = CreateWindowW(L"BUTTON", L"Restore to default", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 210, 80, 160, 44, h, (HMENU)ID_RST, nullptr, nullptr);
-        // Two lines of room: the sentence wraps rather than clipping when the
+        // Three lines of room: the sentence wraps rather than clipping when the
         // user's dialog font is wider than the default. It is only a warning, so
         // it never changes - which also means the red draw is safe.
-        g_note = CreateWindowW(L"STATIC", L"Wi-Fi cannot be disconnected while wifiForce is active.",
-                               WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 132, 380, 34, h, nullptr, nullptr, nullptr);
+        g_note = CreateWindowW(L"STATIC", L"Turn off auto-reconnect by restoring to default above or turn off Wi-Fi",
+                               WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 130, 380, 44, h, nullptr, nullptr, nullptr);
         for (HWND c : {t, g_stat, g_note, g_act, g_rst}) SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE);
         RefreshAsync();
         return 0;
@@ -717,7 +747,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     RegisterClassExW(&wc);
     g_wnd = CreateWindowW(L"wifiForceWnd", L"wifiForce " WIFIFFORCE_VERSION_DOTTED,
                           WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                          CW_USEDEFAULT, CW_USEDEFAULT, 416, 208, nullptr, nullptr, inst, nullptr);
+                          CW_USEDEFAULT, CW_USEDEFAULT, 416, 220, nullptr, nullptr, inst, nullptr);
     ShowWindow(g_wnd, show); UpdateWindow(g_wnd);
     // The window asks once whether something newer exists; the watchdog copy of
     // the program never does.

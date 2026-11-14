@@ -24,7 +24,7 @@ The version is shown in the title bar (`wifiForce` followed by the version). The
 | Wi-Fi adapter | Sets driver options like *Disable Upon Wired Connect* to Disabled; turns off "allow the computer to turn off this device to save power" |
 | Wi-Fi profiles | Every saved profile set to connect automatically |
 | Services | `WlanSvc` set to Automatic and started (the previous start type is remembered) |
-| Watchdog | SYSTEM scheduled task `wifiForceWatchdog` (at startup) checks every 3 s: reconnects Wi-Fi, switches the software radio back on, re-enables a disabled adapter, rewrites the policy values |
+| Watchdog | SYSTEM scheduled task `wifiForceWatchdog` (at startup) checks every 3 s: reconnects Wi-Fi, switches the software radio back on, re-enables a disabled adapter, rewrites the policy values. It stops doing all of that while Wi-Fi is switched off in Windows |
 | Guard | Task `wifiForceGuard` runs every minute and restarts the watchdog if it was killed (a named mutex prevents duplicates) |
 
 Original values are saved to `C:\ProgramData\wifiForce\backup.json` before any change: the policy values, the driver options, the power setting, every profile's connection mode, the Wi-Fi adapters' on/off state and the `WlanSvc` start type. The file is read back before the first change, and if that fails nothing is touched.
@@ -37,7 +37,7 @@ If a value cannot be put back, the backup is kept and the app reports an error i
 
 ## Notes
 
-- While active, manually disconnecting Wi-Fi will not stick. Use **Restore to default** first.
+- While active, manually disconnecting Wi-Fi will not stick - but turning Wi-Fi off in Windows (the Settings toggle, or the action centre) does: from then on the app leaves the radio alone and stops reconnecting, until you turn Wi-Fi back on. **Restore to default** is for undoing the changes themselves.
 - If the policy does not apply immediately, reboot once.
 - Needs Windows 10/11, PowerShell 5+ and Task Scheduler.
 - Click **Restore to default** before deleting the app. Deleting only `wifiForce.exe` leaves the background tasks running.
