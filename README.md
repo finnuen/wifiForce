@@ -1,3 +1,7 @@
+Direct download latest
+
+Windows 10/11  :  https://github.com/finnuen/wifiForce/releases/latest/download/wifiForce.exe
+
 # wifiForce
 
 A tiny Windows app that keeps **Wi-Fi connected while a LAN cable is plugged in** (and has internet). Two buttons: **Activate** and **Restore to default**.
